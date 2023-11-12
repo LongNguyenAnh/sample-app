@@ -1,0 +1,116 @@
+{
+	"info": {
+		"_postman_id": "",
+		"name": "Sample GraphQL Query Tests",
+		"description": "Tests to ensure graphql is correctly processing the data that is coming back from the api for the given bounded context.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "1232456"
+	},
+	"item": [
+		{
+			"name": "Categories",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var Ajv = require('ajv');\r",
+							"var ajv = new Ajv({ logger: console, allErrors: true });\r",
+							"\r",
+							"const schema = {\r",
+							"    \"type\": \"object\",\r",
+							"    \"properties\": {\r",
+							"        \"data\": {\r",
+							"            \"type\": \"object\",\r",
+							"            \"properties\": {\r",
+							"                \"categories\": {\r",
+							"                    \"type\": \"array\",\r",
+							"                    \"items\": {\r",
+							"                        \"type\": \"string\"\r",
+							"                    }\r",
+							"                }\r",
+							"            }\r",
+							"        }\r",
+							"    }\r",
+							"};\r",
+							"\r",
+							"pm.test('Schema is valid', function() {\r",
+							"    pm.expect(ajv.validate(schema, pm.response.json())).to.be.true;\r",
+							"});\r",
+							"\r",
+							"pm.test(\"Response body is valid\", function() {\r",
+							"  var data = JSON.parse(responseBody);\r",
+							"  var valid = ajv.validate(schema, data);\r",
+							"  if (valid !== true) {\r",
+							"      console.log(ajv.error);\r",
+							"  }\r",
+							"  pm.expect(valid).to.be.true;\r",
+							"});\r",
+							"\r",
+							"pm.test(\"Should have valid results\", function () {\r",
+							"    var model = pm.response.json().data.categories;\r",
+							"    pm.expect(model.length).to.be.above(2);\r",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n\t\"query\": \"query categories($year: String, $name: String) {categories(year: $year, name: $name)}\",\r\n\t}"
+				},
+				"url": {
+					"raw": "https://{{ShortRegion}}-{{AppKey}}.{{AwsAccountName}}.sample.com/sample/api",
+					"protocol": "https",
+					"host": [
+						"{{ShortRegion}}-{{AppKey}}",
+						"{{AwsAccountName}}",
+						"sample",
+						"com"
+					],
+					"path": [
+						"Sample",
+						"api"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"pm.test(\"Response is 'OK'\", function() {",
+					"    pm.expect(pm.response.code).equal(200);",
+					"});",
+					"",
+					"pm.test(\"Response is not erroneous\", function() {",
+					"    pm.expect(pm.response.json().errors).equal(undefined, pm.response.json().errors ? pm.response.json().errors[0].message : '');",
+					"});"
+				]
+			}
+		}
+	]
+}

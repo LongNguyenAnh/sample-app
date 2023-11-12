@@ -1,0 +1,29 @@
+{
+  "name": "automation",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "author": "",
+  "license": "ISC",
+  "scripts": {
+    "cy:dx": "node ./parallel.js",
+    "cy:open": "cypress open",
+    "cypress:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:verify": "cypress verify",
+    "cy:info": "cypress info"
+  },
+  "devDependencies": {
+    "cypress": "^10.11.0",
+    "cypress-web-vitals": "^2.1.0",
+    "chrome-har": "^0.13.0",
+    "path": "^0.12.7",
+    "rimraf": "^3.0.2"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.15.4",
+    "cypress-real-events": "^1.5.1",
+    "cypress-wait-until": "^1.7.2",
+    "lighthouse": "^9.6.8"
+  }
+}
