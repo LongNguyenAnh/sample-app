@@ -1,0 +1,22 @@
+
+type Listing {
+    year: Int
+    name: String
+    productId: String
+    productStatus: String
+    stockId: String
+}
+
+type Inventory {
+    totalResults: Int
+    browseMoreNoLocationLink: String
+    browseMoreLink: String
+    browseMoreWithBodyStyleNoLocationLink: String
+    browseMoreWithBodyStyleLink: String
+    browseMoreQueryParameters: String
+    results: [Listing]
+}
+
+type Query {
+    Inventory(year: String , name: String!, productId: String, trim: String, numberOfListings: Int): Inventory
+}

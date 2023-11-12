@@ -1,0 +1,237 @@
+version: 0.2
+env:
+  variables:
+    BOUNDED_CONTEXT_NAME: "sample"
+    APPKEY: "sample-webapi"
+    LAMBDA_ZIP_PATH: "packages/sample-webapi.zip"
+    ARTIFACTS_BUCKET: "static-artifacts"
+    PROD_BLUE_ENV_SUFFIX: "prod-a"
+    PROD_GREEN_ENV_SUFFIX: "prod-b"
+    DEV_BLUE_ENV_SUFFIX: "a"
+    DEV_GREEN_ENV_SUFFIX: "b"
+    FORCE_BLUE_GREEN: "false"
+    TEAM_NAME: ""
+    BUILD_STAGE_STATUS: "FAIL" # Gets set to true at the end of the proces for build health report
+    VERACODE_APP_NAME: "sample API"
+
+  parameter-store:
+    
+  git-credential-helper: yes
+phases:
+  install:
+    runtime-versions:
+      nodejs: 16
+    commands:
+      #######################################################################
+      - echo Installing Prerequisites ...
+      #######################################################################
+      - BUILD_STAGE_DETAIL="INSTALL"
+      - apt_get_times_to_retry=5
+      - current_retry_attempt=0
+      - result=1
+      - retry_wait_time=5
+      - |
+        while [ $result -ne 0 ]
+        do
+          if [ $current_retry_attempt -lt $apt_get_times_to_retry ]; then
+            current_retry_attempt=$(( current_retry_attempt + 1 ))
+            echo "`date -u` | apt-key adv attempt number: $current_retry_attempt"
+            apt-key adv --refresh-keys --keyserver keyserver.ubuntu.com
+            result=$?
+            if [ $result -ne 0 ]; then
+              echo "Waiting $retry_wait_time(s) before next attempt."
+              sleep $retry_wait_time
+              retry_wait_time=$(( retry_wait_time * 2 ))
+            fi
+          else
+            echo "Maximum number of attempts ($current_retry_attempt) exceeded for command: apt-key adv --refresh-keys"
+            exit 1
+          fi
+        done
+      - apt-get update
+      - apt-get install -y apt-transport-https
+      - apt-get install -y curl
+      - apt-get -y install wget
+      - wget "https://releases.hashicorp.com/terraform/1.1.4/terraform_1.1.4_linux_amd64.zip"
+      - unzip terraform_1.1.4_linux_amd64.zip
+      - mv terraform /usr/local/bin/
+      - mkdir -p ~/.terraform.d/plugins/linux_amd64
+      - cd ~/.terraform.d/plugins/linux_amd64
+      - chmod +x terraform-provider*
+      - rm -f *.tar.gz
+      - npm config set strict-ssl true
+      - npm install newman -g
+      - npm install newman-reporter-html -g
+      - npm install github-release-notes -g
+
+      #######################################################################
+      - echo Installing build dependencies ...
+      #######################################################################
+      - ARTIFACTORY_PASSWORD=$(echo -n "$ARTIFACTORY_API_KEY" | base64)
+      - npm install @samplelocal/codebuild-support -g
+      - dotnet tool install -g Amazon.Lambda.Tools
+
+  pre_build:
+    commands:
+      - terraform --version
+      #######################################################################
+      - echo Creating change request
+      #######################################################################
+      - BUILD_STAGE_DETAIL="PREBUILD"
+      #######################################################################
+
+      #######################################################################
+      - echo Preparing Rootvars ...
+      #######################################################################
+      - cp $CODEBUILD_SRC_DIR/scripts/rootvars/rootvars.tf $CODEBUILD_SRC_DIR/scripts/webapi/rootvars.tf
+      - cp $CODEBUILD_SRC_DIR/scripts/rootvars/shared.tf $CODEBUILD_SRC_DIR/scripts/webapi/shared.tf
+      - cp $CODEBUILD_SRC_DIR/scripts/rootvars/*.tfvars $CODEBUILD_SRC_DIR/scripts/webapi/rootvars/.
+
+      #######################################################################
+      - echo Setting and Exporting variables for terraform scripts ...
+      #######################################################################
+      - DOMAIN="$REGION_SHORT-$APPKEY-$BRANCH_IDENTIFIER.$AWS_ACCOUNT_NAME.sample.com"
+      - |
+        if [ "$IS_MASTER_BRANCH" = "true" ] || [ "$FORCE_BLUE_GREEN" = "true" ]; then
+          #######################################################################
+          echo Determining live environment ...
+          #######################################################################
+          if ["$IS_MASTER_BRANCH" = "true"]; then
+            BLUE_ENV_SUFFIX=$PROD_BLUE_ENV_SUFFIX
+            GREEN_ENV_SUFFIX=$PROD_GREEN_ENV_SUFFIX
+          else
+            BLUE_ENV_SUFFIX=$BRANCH_IDENTIFIER-$DEV_BLUE_ENV_SUFFIX
+            GREEN_ENV_SUFFIX=$BRANCH_IDENTIFIER-$DEV_GREEN_ENV_SUFFIX
+          fi
+          
+          BLUE_DOMAIN="$REGION_SHORT-$APPKEY-$BLUE_ENV_SUFFIX.$AWS_ACCOUNT_NAME.sample.com"
+          SUFFIX=$(cbs-get-env -type dns -domain $DOMAIN -blue-domain $BLUE_DOMAIN)
+          echo Building environment - $SUFFIX
+          export TF_VAR_lv_create_alb=true
+        else
+          SUFFIX="$BRANCH_IDENTIFIER-$DEV_BLUE_ENV_SUFFIX"
+          export TF_VAR_lv_create_alb=$CREATE_DEV_ALB
+        fi
+
+      - BUILD_ID=$(date +%s)
+      - export TF_VAR_lv_build_id="$BUILD_ID"
+      - export TF_VAR_lv_suffix="$SUFFIX"
+      - export TF_VAR_lv_branch_identifier="$BRANCH_IDENTIFIER"   
+      - export TF_VAR_lv_newrelic_license_key="$NEWRELIC_LICENSE_KEY"
+      - export TF_VAR_lv_newrelic_account_id="$NEWRELIC_ACCOUNT_ID"
+
+      - POSTMAN_ENV="$AWS_ACCOUNT_NAME-$REGION.postman_environment.json"
+      - APPKEY_WITH_SUFFIX="$APPKEY-$SUFFIX"
+      - BACKEND_CONFIG_KEY="$APPKEY/$SUFFIX/terraform.tfstate"
+      - echo $APPKEY_WITH_SUFFIX
+      - echo TF_VAR_lv_create_alb $TF_VAR_lv_create_alb
+  build:
+    commands:
+      - BUILD_STAGE_DETAIL="DOTNET-BUILD"
+      - cd $CODEBUILD_SRC_DIR/src/webapi
+      - dotnet add Sample.Tests package coverlet.msbuild
+      - dotnet restore --verbosity d
+      - dotnet build
+      - dotnet test Sample.Tests /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:CoverletOutput=../coveragereport/coverage.opencover.xml
+      - dotnet ~/.nuget/packages/reportgenerator/5.1.12/tools/net6.0/ReportGenerator.dll -reports:coveragereport/coverage.opencover.xml -targetdir:coveragereport -reporttypes:Html
+      - cbs-coverage -runner csharp -targets "splunk" -coverage-dir "coveragereport"
+
+      #######################################################################
+      - echo Sample -  WebApi Lambda ...
+      #######################################################################
+      - cd $CODEBUILD_SRC_DIR/src/webapi/Sample
+      - dotnet lambda package -o $CODEBUILD_SRC_DIR/scripts/webapi/packages/$APPKEY-$BUILD_ID
+      - echo $AWS_ACCOUNT_NAME-$ARTIFACTS_BUCKET-$REGION/gha/$GHE_REPO/$BRANCH_IDENTIFIER/$APPKEY/build-packages/
+      - aws s3 cp $CODEBUILD_SRC_DIR/scripts/webapi/packages s3://$AWS_ACCOUNT_NAME-$ARTIFACTS_BUCKET-$REGION/gha/$GHE_REPO/$BRANCH_IDENTIFIER/$APPKEY/build-packages/ --recursive
+
+      - CODE_BUILD_SUCCEEDING="true"
+
+  post_build:
+    commands:
+      - |
+        if [ "$CODE_BUILD_SUCCEEDING" != "true" ]; then
+          echo ERROR - Last phase failed!
+          exit 1
+        fi
+      ######################################################################
+      - echo Executing Terraform Init ...
+      ######################################################################
+      - BUILD_STAGE_DETAIL="TERRAFORM-EXECUTION"
+      - cd $CODEBUILD_SRC_DIR/scripts/webapi
+
+      - terraform init -backend-config="bucket=terraform-state-$AWS_ACCOUNT_NAME-$REGION" -backend-config="key=$BACKEND_CONFIG_KEY" -backend-config="region=$REGION" -backend=true -force-copy -get=true -input=false -no-color
+
+      #######################################################################
+      - echo Executing Terraform Apply ...
+      #######################################################################
+      - terraform apply -no-color -auto-approve -var-file="rootvars/global.tfvars" -var-file="rootvars/$AWS_ACCOUNT_NAME.tfvars" -var-file="rootvars/$AWS_ACCOUNT_NAME-$REGION.tfvars" -var-file="rootvars/$REGION.tfvars" -var-file="rootvars/$CONFIG.tfvars" -var-file="localvars.tfvars"
+
+      #######################################################################
+      - echo Extract output from terraform ...
+      #######################################################################
+      - API_CDN=$(terraform output -no-color -raw api_cdn)
+
+      #######################################################################
+      - echo Waiting on api to be available ...
+      #######################################################################
+      - cbs-wait https://$API_CDN/sample/healthcheck 10
+
+      #######################################################################
+      - echo Running Postman ...
+      #######################################################################
+      - BUILD_STAGE_DETAIL="POSTMAN-EXECUTION"
+      - sed -i 's/{AppKey}/'$APPKEY_WITH_SUFFIX'/g' $CODEBUILD_SRC_DIR/automation/webapi/functional/$POSTMAN_ENV
+      - cd $CODEBUILD_SRC_DIR/automation/webapi/functional
+      - newman run postman_collection.json -e $POSTMAN_ENV -r html,cli --reporter-html-export webapi-postman-report.html --bail newman --silent
+      - |
+        if [ "$?" = 1 ]; then
+          echo ERROR - Postman failed!
+          exit 1
+        fi
+        
+      - aws s3 rm s3://$AWS_ACCOUNT_NAME-$ARTIFACTS_BUCKET-$REGION/$APPKEY/$BRANCH_IDENTIFIER --recursive
+      - DEPLOYMENT_SUCCESS="true"
+      - BUILD_STAGE_STATUS="SUCCESS"
+      - BUILD_STAGE_DETAIL="BUILD-COMPLETE"
+    finally:
+      # Export Variables for future builds
+      - | 
+        cbs-set-build-output \
+          -appkey "$APPKEY" \
+          -branch "$BRANCH_IDENTIFIER"  \
+          -changeRequestCINumber "$CHANGE_REQUEST_CI_NUMBER" \
+          -output-apicdn "$API_CDN" \
+          -output-domain "$DOMAIN"
+
+      - |
+        if [ "$CONFIG" = "prod" ]; then
+          ###########################################################################################
+          echo Setting CHANGETEXT for Build Health Dashboard to Correlate Pull Request to Build Stage
+          ###########################################################################################
+          CHANGETEXT="chg_number:$CHANGE_NUMBER,"
+          if [ "$DEPLOYMENT_SUCCESS" = "true" ]; then
+            #######################################################################
+            echo CodeBuild Succeeding - Closing CHG Request
+            #######################################################################
+            cbs-change-request-api -action "Close" -changeNumber "$CHANGE_NUMBER" -closeNotes "Successful deploy" || "true"          
+          else
+            #######################################################################
+            echo CodeBuild Failing - Failing CHG Request
+            #######################################################################
+            cbs-change-request-api -action "Fail" -changeNumber "$CHANGE_NUMBER" -closeNotes "Failed deploy" || "true"
+          fi
+        fi
+
+      ######################################################
+      - echo Push Data to Splunk for Build Health Dashboard
+      ######################################################
+      - cbs-push-data-to-splunk -cai_bu "sample" -cai_component "$BOUNDED_CONTEXT_NAME" -cai_environment "$CONFIG-$BRANCH_IDENTIFIER" -cai_team "$TEAM_NAME" -splunk_message "status:$BUILD_STAGE_STATUS, $CHANGETEXT stage:WEBAPI-$BUILD_STAGE_DETAIL" -splunk_source_type 'json' -splunk_source 'app:buildhealth:log'
+
+artifacts:
+  files:
+    - "scripts/rootvars/*"
+    - "scripts/webapi/**/*"
+    - "automation/webapi/functional/webapi-postman-report.html"
+  base-directory: $CODEBUILD_SRC_DIR
+  discard-paths: no
+

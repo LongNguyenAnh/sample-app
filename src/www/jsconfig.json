@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "commonjs",
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": "./",
+    "paths": {
+    }
+  },
+  "exclude": [
+    "node_modules"
+  ],
+  "include": [
+    "./node_modules/cypress",
+    "../automation/www/cypress/**/*.js"
+  ]
+}

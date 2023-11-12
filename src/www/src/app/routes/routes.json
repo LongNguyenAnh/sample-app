@@ -1,0 +1,20 @@
+{
+  "category": {
+    "Path": "category",
+    "component": "sample",
+    "loading": null,
+    "webpackChunkName": "sample",
+    "modules": ["sample"],
+    "delay": 300,
+    "strict":false,
+    "turnOffLowerCaseRedirect": true
+  },
+  "consumer-reviews": {
+    "Path": "{product-id}/consumer-reviews",
+    "component": "ConsumerReview",
+    "loading": null,
+    "webpackChunkName": "ConsumerReview",
+    "modules": ["ConsumerReview"],
+    "delay": 300
+  }
+}

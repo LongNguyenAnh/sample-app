@@ -1,0 +1,25 @@
+{
+  "name": "www",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "axios": "^0.27.2",
+    "compression": "^1.7.4",
+    "express": "4.17.1",
+    "node-fetch": "^2.6.1",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2"
+  },
+  "ignoreDependencies": {
+    "webpack": "",
+    "copy-webpack-plugin": "",
+    "webpack-dev-middleware": "",
+    "webpack-hot-middleware": "",
+    "html-webpack-plugin": "",
+    "@babel/plugin-syntax-dynamic-import": "",
+    "dynamic-import-node": "",
+    "aws-sdk": "",
+    "redis": "",
+    "subscriptions-transport-ws": ""
+  }
+}

@@ -1,0 +1,41 @@
+[
+    {
+        "Id": 1767799,
+        "TypeId": 1,
+        "Url": "",
+        "ShotType": "Exterior",
+        "ShotId": 1,
+        "Width": 640,
+        "Height": 480,
+        "Process": "AsIs",
+        "Anchor": "Center",
+        "Primary": true,
+        "OptionId": 0
+    },
+    {
+        "Id": 1767800,
+        "TypeId": 1,
+        "Url": "",
+        "ShotType": "Exterior",
+        "ShotId": 2,
+        "Width": 640,
+        "Height": 480,
+        "Process": "AsIs",
+        "Anchor": "Center",
+        "Primary": false,
+        "OptionId": 0
+    },
+    {
+        "Id": 1767801,
+        "TypeId": 1,
+        "Url": "",
+        "ShotType": "Exterior",
+        "ShotId": 7,
+        "Width": 640,
+        "Height": 480,
+        "Process": "AsIs",
+        "Anchor": "Center",
+        "Primary": false,
+        "OptionId": 0
+    }
+]

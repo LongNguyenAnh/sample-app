@@ -1,0 +1,1 @@
+export { default as sampleCategory } from './category.json';
